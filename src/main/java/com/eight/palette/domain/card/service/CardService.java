@@ -33,49 +33,33 @@ public class CardService {
         this.redissonClient = redissonClient;
     }
 
+    @Transactional
     public CardResponseDto createCard(Long columnId, CardRequestDto requestDto) {
 
-        RLock lock = redissonClient.getFairLock(LOCK_KEY);
+        ColumnInfo columnInfo = columnsRepository.findByIdWithLock(columnId).orElseThrow(()
+                -> new NotFoundException("해당 컬럼을 찾지 못했습니다.")
+        );
 
-        try {
-            boolean isLocked = lock.tryLock(RedissonConfig.WAIT_TIME, RedissonConfig.LEASE_TIME, TimeUnit.SECONDS);
-            if (isLocked) {
-                try {
-                    ColumnInfo columnInfo = columnsRepository.findById(columnId).orElseThrow(()
-                            -> new NotFoundException("해당 컬럼을 찾지 못했습니다.")
-                    );
+        int cardSize = columnInfo.getCardList().size();
+        int position = 1;
 
-                    int cardSize = columnInfo.getCardList().size();
-                    int position = 1;
-
-                    if (cardSize != 0) {
-                        position = cardSize + 1;
-                    }
-
-                    Card card = Card.builder()
-                            .title(requestDto.getTitle())
-                            .content(requestDto.getContent())
-                            .deadLineDate(requestDto.getDeadLineDate())
-                            .worker(requestDto.getWorker())
-                            .columnInfo(columnInfo)
-                            .status(Card.Status.ACTIVE)
-                            .position(position)
-                            .build();
-
-                    cardRepository.save(card);
-
-                    return new CardResponseDto(card);
-                } finally {
-                    lock.unlock();
-                }
-            } else {
-                throw new BadRequestException("다시 시도해 주세요.(Lock 얻기 실패)");
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new BadRequestException("다시 시도해 주세요.(작업 실패)");
+        if (cardSize != 0) {
+            position = cardSize + 1;
         }
 
+        Card card = Card.builder()
+                .title(requestDto.getTitle())
+                .content(requestDto.getContent())
+                .deadLineDate(requestDto.getDeadLineDate())
+                .worker(requestDto.getWorker())
+                .columnInfo(columnInfo)
+                .status(Card.Status.ACTIVE)
+                .position(position)
+                .build();
+
+        cardRepository.save(card);
+
+        return new CardResponseDto(card);
     }
 
     @Transactional
